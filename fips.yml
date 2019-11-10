@@ -1,0 +1,9 @@
+#
+# melt
+#
+---
+imports:
+    sokol:
+        git: https://github.com/floooh/sokol
+    fips-imgui:
+        git: https://github.com/fips-libs/fips-imgui.git
