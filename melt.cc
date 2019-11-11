@@ -22,15 +22,14 @@
 #include "teapot_obj.h"
 #include "suzanne_obj.h"
 
-static bool show_test_window = true;
-static bool show_another_window = false;
 static bool show_quit_dialog = false;
-static sg_pass_action pass_action;
 
 static MeltParams melt_params;
 static MeltResult melt_result;
 
-static sg_pipeline pipeline;
+static sg_pass_action pass_action;
+static sg_pipeline pipeline_0;
+static sg_pipeline pipeline_1;
 static sg_bindings bindings_0;
 static sg_bindings bindings_1;
 static sg_buffer position_buffer;
@@ -40,9 +39,18 @@ static sg_buffer occluder_index_buffer;
 static glm::mat4 view;
 static glm::mat4 position;
 
-typedef struct {
+static uint32_t model_vertex_count;
+static uint32_t occluder_vertex_count;
+
+typedef struct 
+{
     glm::mat4 mvp;
-} uniform_params;
+} vs_uniform_params;
+
+typedef struct 
+{
+    float alpha;
+} fs_uniform_params;
 
 static void setup_imgui_style()
 {
@@ -97,7 +105,6 @@ static void setup_imgui_style()
     style.Colors[ImGuiCol_TextSelectedBg]        = ImVec4(0.92f, 0.18f, 0.29f, 0.43f);
     style.Colors[ImGuiCol_ModalWindowDarkening]  = ImVec4(0.20f, 0.22f, 0.27f, 0.73f);
     style.Colors[ImGuiCol_PopupBg]               = ImVec4(0.20f, 0.20f, 0.20f, 0.50f);
-    ImGuiIO& io = ImGui::GetIO();
 }
 
 static void init_melt_params()
@@ -106,6 +113,7 @@ static void init_melt_params()
     melt_params.voxelSize = 0.25f;
     melt_params.fillPercentage = 1.0f;
     melt_params.debug.flags |= MeltDebugTypeShowResult;
+    melt_params.debug.extentIndex = -1;
 }
 
 static bool load_model_mesh(const char* model_name)
@@ -191,6 +199,8 @@ static bool load_model_mesh(const char* model_name)
             melt_params.mesh.vertices.back().z = shapes[i].mesh.positions[3 * v + 2];
         }
     }
+    
+    model_vertex_count = vertex_count;
 
     return true;
 }
@@ -198,6 +208,9 @@ static bool load_model_mesh(const char* model_name)
 static void generate_occluder()
 {
     MeltGenerateOccluder(melt_params, melt_result);
+
+    if (melt_result.debugMesh.vertices.size() == 0)
+        return;
 
     sg_buffer_desc vbuf_desc;
     memset(&vbuf_desc, 0, sizeof(vbuf_desc));
@@ -230,11 +243,12 @@ static void generate_occluder()
         .vertex_buffers[0] = occluder_position_buffer,
         .index_buffer = occluder_index_buffer,
     };
+    
+    occluder_vertex_count = melt_result.debugMesh.indices.size();
 }
 
 static void init(void) {
-    // setup sokol-gfx and sokol-time
-    sg_desc desc = { };
+    sg_desc desc = {};
     desc.mtl_device = sapp_metal_get_device();
     desc.mtl_renderpass_descriptor_cb = sapp_metal_get_renderpass_descriptor;
     desc.mtl_drawable_cb = sapp_metal_get_drawable;
@@ -245,13 +259,11 @@ static void init(void) {
     desc.gl_force_gles2 = sapp_gles2();
     sg_setup(&desc);
 
-    // setup sokol-imgui, but provide our own font
-    simgui_desc_t simgui_desc = { };
+    simgui_desc_t simgui_desc = {};
     simgui_desc.no_default_font = true;
     simgui_desc.dpi_scale = sapp_dpi_scale();
     simgui_setup(&simgui_desc);
 
-    // configure Dear ImGui with our own embedded font
     auto& io = ImGui::GetIO();
     ImFontConfig fontCfg;
     fontCfg.FontDataOwnedByAtlas = false;
@@ -262,7 +274,6 @@ static void init(void) {
 
     setup_imgui_style();
 
-    // create font texture for the custom font
     unsigned char* font_pixels;
     int font_width, font_height;
     io.Fonts->GetTexDataAsRGBA32(&font_pixels, &font_width, &font_height);
@@ -278,62 +289,71 @@ static void init(void) {
     img_desc.content.subimage[0][0].size = font_width * font_height * 4;
     io.Fonts->TexID = (ImTextureID)(uintptr_t) sg_make_image(&img_desc).id;
 
-    // initial clear color
     pass_action.colors[0].action = SG_ACTION_CLEAR;
     pass_action.colors[0].val[0] = 0.64f;
     pass_action.colors[0].val[1] = 0.76f;
     pass_action.colors[0].val[2] = 0.91f;
     pass_action.colors[0].val[3] = 1.0f;
 
-    const char vertex_source[] = R"END(
-        #version 150
-        in vec3 position;
-        in vec3 color;
-        uniform mat4 mvp;
-        out vec3 f_color;
-        void main(void) {
-            gl_Position = mvp * vec4(position, 1.0);
-            f_color = color;
-        }
-    )END";
+#if defined(SOKOL_GLCORE33)
+    const char vertex_source[] = 
+        "#version 330\n"
+        "precision highp float;\n"
+        "layout(location=0) in vec3 position;\n"
+        "layout(location=1) in vec3 color;\n"
+        "uniform mat4 mvp;\n"
+        "out vec3 f_color;\n"
+        "void main(void) {\n"
+        "    gl_Position = mvp * vec4(position, 1.0);\n"
+        "    f_color = color;\n"
+        "}\n";
+    const char fragment_source[] =
+        "#version 330\n"
+        "precision highp float;\n"
+        "in vec3 f_color;\n"
+        "out vec4 color;\n"
+        "uniform float alpha;\n"
+        "void main(void) {\n"
+        "    color = vec4(f_color, alpha);\n"
+        "}\n";
+#elif defined(SOKOL_GLES2) || defined(SOKOL_GLES3)
+    const char vertex_source[] = 
+        "precision highp float;\n"
+        "attribute vec3 position;\n"
+        "attribute vec3 color;\n"
+        "uniform mat4 mvp;\n"
+        "varying vec3 f_color;\n"
+        "void main(void) {\n"
+        "    gl_Position = mvp * vec4(position, 1.0);\n"
+        "    f_color = color;\n"
+        "}\n";
+    const char fragment_source[] =
+        "precision highp float;\n"
+        "varying vec3 f_color;\n"
+        "uniform float alpha;\n"
+        "void main(void) {\n"
+        "    gl_FragColor = vec4(f_color, alpha);\n"
+        "}\n";
+#endif
 
-    const char fragment_source[] = R"END(
-        #version 150
-        in vec3 f_color;
-        out vec4 color;
-        uniform float alpha;
-        void main(void) {
-            color = vec4(f_color, alpha);
-        }
-    )END";
-
-    sg_shader_desc shader_desc = 
-    {
-        .vs.uniform_blocks[0] = 
-        {
-            .size = sizeof(uniform_params),
-            .uniforms = 
-            { 
-                [0] = { .name = "mvp", .type = SG_UNIFORMTYPE_MAT4 }
-            }
+    sg_shader_desc shader_desc =  {
+        .attrs[0].name = "position",
+        .attrs[1].name = "color",
+        .fs.uniform_blocks[0] = {
+            .size = sizeof(fs_uniform_params),
+            .uniforms = { [0] = { .name = "alpha", .type = SG_UNIFORMTYPE_FLOAT } }
+        },
+        .fs.source = fragment_source,
+        .vs.uniform_blocks[0] =  {
+            .size = sizeof(vs_uniform_params),
+            .uniforms =  { [0] = { .name = "mvp", .type = SG_UNIFORMTYPE_MAT4 } }
         },
         .vs.source = vertex_source,
-        .fs.source = fragment_source,
     };
     sg_shader program = sg_make_shader(&shader_desc);
     
-    sg_pipeline_desc pip_desc = 
-    {
-        .shader = program,
-        .blend = 
-        {
-            .enabled = true,
-            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-        },
-        // .index_type = SG_INDEXTYPE_UINT16,
-        .layout = 
-        {
+    sg_pipeline_desc pip0_desc =  {
+        .layout =  {
             .buffers[0].stride = sizeof(glm::vec3) * 2,
             .attrs = {
                 [0].offset = 0,
@@ -341,9 +361,43 @@ static void init(void) {
                 [1].offset = sizeof(glm::vec3),
                 [1].format = SG_VERTEXFORMAT_FLOAT3,
             }
-        }
+        },
+        .shader = program,
+        .depth_stencil = {
+            .depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL,
+            .depth_write_enabled = false
+        },
+        .blend =  {
+            .enabled = true,
+            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
+            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        },
     };
-    pipeline = sg_make_pipeline(&pip_desc);
+    pipeline_0 = sg_make_pipeline(&pip0_desc);
+
+    sg_pipeline_desc pip1_desc =  {
+        .layout =  {
+            .buffers[0].stride = sizeof(glm::vec3) * 2,
+            .attrs = {
+                [0].offset = 0,
+                [0].format = SG_VERTEXFORMAT_FLOAT3,
+                [1].offset = sizeof(glm::vec3),
+                [1].format = SG_VERTEXFORMAT_FLOAT3,
+            }
+        },
+        .shader = program,
+        .index_type = SG_INDEXTYPE_UINT16,
+        .depth_stencil = {
+            .depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL,
+            .depth_write_enabled = false
+        },
+        .blend =  {
+            .enabled = true,
+            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
+            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        },
+    };
+    pipeline_1 = sg_make_pipeline(&pip1_desc);
 
     init_melt_params();
 }
@@ -385,6 +439,8 @@ static void simgui_frame()
     ImGui::Checkbox("BoxTypeBottom", &box_type_bottom);
     ImGui::Checkbox("BoxTypeSides", &box_type_sides);
     ImGui::Checkbox("BoxTypeRegular", &box_type_regular);
+    
+    melt_params.boxTypeFlags = MeltOccluderBoxTypeNone;
 
     if (box_type_diagonals) melt_params.boxTypeFlags |= MeltOccluderBoxTypeDiagonals;
     if (box_type_top) melt_params.boxTypeFlags |= MeltOccluderBoxTypeTop;
@@ -392,7 +448,7 @@ static void simgui_frame()
     if (box_type_sides) melt_params.boxTypeFlags |= MeltOccluderBoxTypeSides;
     if (box_type_regular) melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
 
-    if (ImGui::Button("Generate"))
+    if (ImGui::Button("Generate") && melt_params.boxTypeFlags != MeltOccluderBoxTypeNone)
     {
         generate_occluder();
     }
@@ -401,7 +457,8 @@ static void simgui_frame()
     ImGui::End();
 }
 
-static void frame(void) {
+static void frame(void) 
+{
     const int width = sapp_width();
     const int height = sapp_height();
 
@@ -411,14 +468,29 @@ static void frame(void) {
 
     if (bindings_0.vertex_buffers[0].id != SG_INVALID_ID)
     {
-        sg_apply_pipeline(pipeline);
-        sg_apply_bindings(&bindings_0);
-        uniform_params uniforms;
         glm::mat4 projection = glm::perspective(glm::radians(55.0f), float(width) / height, 0.01f, 100.0f);
-        glm::mat4 view_proj = projection * view;
-        uniforms.mvp = view_proj;
-        sg_apply_uniforms(SG_SHADERSTAGE_VS, 0, &uniforms, sizeof(uniform_params));
-        sg_draw(0, 36, 1);
+        view = glm::lookAt(glm::vec3(0.0, 1.5f, 6.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        static float ry = 0.0f;
+        ry += 0.01f;
+        glm::mat4 rym = glm::rotate(glm::mat4(1.0f), ry, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        vs_uniform_params vs_uniforms;
+        vs_uniforms.mvp = projection * view * rym;
+        fs_uniform_params fs_uniforms;
+        fs_uniforms.alpha = 0.5f;
+
+        sg_apply_pipeline(pipeline_0);
+        sg_apply_bindings(&bindings_0);
+        sg_apply_uniforms(SG_SHADERSTAGE_VS, 0, &vs_uniforms, sizeof(vs_uniform_params));
+        sg_apply_uniforms(SG_SHADERSTAGE_FS, 0, &fs_uniforms, sizeof(fs_uniform_params));
+
+        sg_draw(0, model_vertex_count, 1);
+    }
+    if (bindings_1.vertex_buffers[0].id != SG_INVALID_ID)
+    {
+        sg_apply_pipeline(pipeline_1);
+        sg_apply_bindings(&bindings_1);
+        sg_draw(0, occluder_vertex_count, 1);
     }
 
     simgui_render();
@@ -426,7 +498,8 @@ static void frame(void) {
     sg_commit();
 }
 
-static void cleanup(void) {
+static void cleanup(void) 
+{
     simgui_shutdown();
     sg_destroy_buffer(position_buffer);
     sg_destroy_buffer(occluder_position_buffer);
@@ -436,80 +509,17 @@ static void cleanup(void) {
 
 static void input(const sapp_event* event) 
 {
-    static glm::vec3 position(-4.0f, 0.0f, 0.0f);
-    static glm::vec3 forward(1.0, 0.0, 0.0f);
-    static float rotation[] = { 0.0f, 0.0f };
-    static double last_mouse_pos[] = { 0.0, 0.0 };
-    glm::vec3 up = glm::vec3(0.0, 1.0, 0.0);
-    double mouse[2];
-
-    float dpi_scale = sapp_dpi_scale();
-    switch (event->type) 
+    if (event->type == SAPP_EVENTTYPE_QUIT_REQUESTED)
     {
-        case SAPP_EVENTTYPE_QUIT_REQUESTED: 
-        {
-            show_quit_dialog = true;
-            sapp_cancel_quit();
-        }
-        break;
-        case SAPP_EVENTTYPE_MOUSE_DOWN:
-        {
-            mouse[0] = event->mouse_x / dpi_scale;
-            mouse[1] = event->mouse_y / dpi_scale;
-            if (event->mouse_button < 3) 
-            {
-                rotation[0] += (float)(mouse[1] - last_mouse_pos[1]) * 0.005f;
-                rotation[1] += (float)(mouse[0] - last_mouse_pos[0]) * 0.005f;
-            }
-            last_mouse_pos[0] = mouse[0];
-            last_mouse_pos[1] = mouse[1];
-
-            float pitch = -rotation[0];
-            float yaw = rotation[1];
-
-            if (pitch >= (float) M_PI_2) pitch = (float) M_PI_2;
-            if (pitch <= (float)-M_PI_2) pitch = (float)-M_PI_2;
-
-            forward.x = cos(pitch) * cos(yaw);
-            forward.y = sin(pitch);
-            forward.z = cos(pitch) * sin(yaw);
-            forward = glm::normalize(forward);
-        }
-        break;
-        case SAPP_EVENTTYPE_MOUSE_UP:
-        {
-            last_mouse_pos[0] = mouse[0] = event->mouse_x / dpi_scale;
-            last_mouse_pos[1] = mouse[1] = event->mouse_y / dpi_scale;
-        }
-        break;
-        case SAPP_EVENTTYPE_MOUSE_MOVE:
-        {
-            last_mouse_pos[0] = mouse[0] = event->mouse_x / dpi_scale;
-            last_mouse_pos[1] = mouse[1] = event->mouse_y / dpi_scale;
-        }
-        break;
-        case SAPP_EVENTTYPE_KEY_DOWN:
-        {
-            float speed = 0.01f;
-            if (event->key_code == SAPP_KEYCODE_LEFT_SHIFT)
-                speed = 0.1f;
-            if (event->key_code == SAPP_KEYCODE_S)
-                position -= forward * speed;
-            else if (event->key_code == SAPP_KEYCODE_W)
-                position += forward * speed;
-            else if (event->key_code == SAPP_KEYCODE_A)
-                position -= glm::normalize(glm::cross(forward, up)) * speed;
-            else if (event->key_code == SAPP_KEYCODE_D)
-                position += glm::normalize(glm::cross(forward, up)) * speed;
-        }
-        break;
+        show_quit_dialog = true;
+        sapp_cancel_quit();
     }
-    view = glm::lookAt(position, position + forward, up);
 
     simgui_handle_event(event);
 }
 
-sapp_desc sokol_main(int argc, char* argv[]) {
+sapp_desc sokol_main(int argc, char* argv[]) 
+{
     sapp_desc desc = { };
     desc.init_cb = init;
     desc.frame_cb = frame;
