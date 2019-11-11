@@ -6,7 +6,7 @@
 #define SOKOL_IMGUI_IMPL
 #include "sokol_imgui.h"
 #define MELT_IMPLEMENTATION
-#include "melt.h"
+#include "melt/melt.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 #include "glm/glm.hpp"
