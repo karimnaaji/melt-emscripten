@@ -29,7 +29,9 @@ static MeltResult melt_result;
 
 static sg_pass_action pass_action;
 static sg_pipeline pipeline_0;
+static sg_pipeline pipeline_0_depth;
 static sg_pipeline pipeline_1;
+static sg_pipeline pipeline_1_depth;
 static sg_bindings bindings_0;
 static sg_bindings bindings_1;
 static sg_buffer position_buffer;
@@ -41,6 +43,8 @@ static glm::mat4 position;
 
 static uint32_t model_vertex_count;
 static uint32_t occluder_vertex_count;
+
+static bool depth_test_enabled = false;
 
 typedef struct 
 {
@@ -247,7 +251,8 @@ static void generate_occluder()
     occluder_vertex_count = melt_result.debugMesh.indices.size();
 }
 
-static void init(void) {
+static void init(void) 
+{
     sg_desc desc = {};
     desc.mtl_device = sapp_metal_get_device();
     desc.mtl_renderpass_descriptor_cb = sapp_metal_get_renderpass_descriptor;
@@ -352,7 +357,7 @@ static void init(void) {
     };
     sg_shader program = sg_make_shader(&shader_desc);
     
-    sg_pipeline_desc pip0_desc =  {
+    sg_pipeline_desc pip_desc = {
         .layout =  {
             .buffers[0].stride = sizeof(glm::vec3) * 2,
             .attrs = {
@@ -364,7 +369,7 @@ static void init(void) {
         },
         .shader = program,
         .depth_stencil = {
-            .depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL,
+            .depth_compare_func = SG_COMPAREFUNC_ALWAYS,
             .depth_write_enabled = false
         },
         .blend =  {
@@ -373,31 +378,19 @@ static void init(void) {
             .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
         },
     };
-    pipeline_0 = sg_make_pipeline(&pip0_desc);
-
-    sg_pipeline_desc pip1_desc =  {
-        .layout =  {
-            .buffers[0].stride = sizeof(glm::vec3) * 2,
-            .attrs = {
-                [0].offset = 0,
-                [0].format = SG_VERTEXFORMAT_FLOAT3,
-                [1].offset = sizeof(glm::vec3),
-                [1].format = SG_VERTEXFORMAT_FLOAT3,
-            }
-        },
-        .shader = program,
-        .index_type = SG_INDEXTYPE_UINT16,
-        .depth_stencil = {
-            .depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL,
-            .depth_write_enabled = false
-        },
-        .blend =  {
-            .enabled = true,
-            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-        },
-    };
-    pipeline_1 = sg_make_pipeline(&pip1_desc);
+    pipeline_0 = sg_make_pipeline(&pip_desc);
+    pip_desc.depth_stencil.depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL;
+    pip_desc.blend.enabled = false;
+    pip_desc.depth_stencil.depth_write_enabled = true;
+    pipeline_0_depth = sg_make_pipeline(&pip_desc);
+    pip_desc.index_type = SG_INDEXTYPE_UINT16;
+    pip_desc.depth_stencil.depth_compare_func = SG_COMPAREFUNC_ALWAYS;
+    pip_desc.blend.enabled = true;
+    pipeline_1 = sg_make_pipeline(&pip_desc);
+    pip_desc.depth_stencil.depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL;
+    pip_desc.blend.enabled = false;
+    pip_desc.depth_stencil.depth_write_enabled = true;
+    pipeline_1_depth = sg_make_pipeline(&pip_desc);
 
     init_melt_params();
 }
@@ -408,7 +401,6 @@ static void simgui_frame()
     ImGuiWindowFlags options = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
     ImGui::Begin("Fixed Overlay", nullptr, ImVec2(0,0), 0.3f, options);
 
-    static bool depth_test = false;
     static bool box_type_diagonals = false;
     static bool box_type_top = false;
     static bool box_type_bottom = false;
@@ -452,7 +444,7 @@ static void simgui_frame()
     {
         generate_occluder();
     }
-    ImGui::Checkbox("Depth Test", &depth_test);
+    ImGui::Checkbox("Depth Test", &depth_test_enabled);
 
     ImGui::End();
 }
@@ -479,7 +471,10 @@ static void frame(void)
         fs_uniform_params fs_uniforms;
         fs_uniforms.alpha = 0.5f;
 
-        sg_apply_pipeline(pipeline_0);
+        if (depth_test_enabled)
+            sg_apply_pipeline(pipeline_0_depth);
+        else
+            sg_apply_pipeline(pipeline_0);
         sg_apply_bindings(&bindings_0);
         sg_apply_uniforms(SG_SHADERSTAGE_VS, 0, &vs_uniforms, sizeof(vs_uniform_params));
         sg_apply_uniforms(SG_SHADERSTAGE_FS, 0, &fs_uniforms, sizeof(fs_uniform_params));
@@ -488,7 +483,10 @@ static void frame(void)
     }
     if (bindings_1.vertex_buffers[0].id != SG_INVALID_ID)
     {
-        sg_apply_pipeline(pipeline_1);
+        if (depth_test_enabled)
+            sg_apply_pipeline(pipeline_1_depth);
+        else
+            sg_apply_pipeline(pipeline_1);
         sg_apply_bindings(&bindings_1);
         sg_draw(0, occluder_vertex_count, 1);
     }
