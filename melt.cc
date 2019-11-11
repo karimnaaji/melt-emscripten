@@ -67,11 +67,11 @@ typedef struct
 
 static std::map<const char*, model_config> model_configs =
 {
-    {"bunny.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.12f, 0.9f}},
-    {"column.obj", {glm::vec3(0.35f), glm::vec3(0.0f, -6.5f, 0.0f), 0.2f, 0.85f}},
+    {"bunny.obj", {glm::vec3(2.0f), glm::vec3(0.0f, -0.5f, 0.0f), 0.12f, 0.9f}},
+    {"column.obj", {glm::vec3(0.35f), glm::vec3(0.0f, -6.7f, 0.0f), 0.2f, 0.85f}},
     {"cube.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.15f, 1.0f}},
-    {"sphere.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.15f, 0.8f}},
-    {"suzanne.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.15f, 0.8f}},
+    {"sphere.obj", {glm::vec3(1.5f), glm::vec3(0.0f), 0.15f, 0.8f}},
+    {"suzanne.obj", {glm::vec3(1.5f), glm::vec3(0.0f), 0.15f, 0.8f}},
     //{"teapot.obj", {glm::vec3(1.0f, glm::vec3(0.0f), 0.25f, 1.0f}},
 };
 
