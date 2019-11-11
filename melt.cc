@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <sstream>
+#include <map>
 
 #include "bunny_obj.h"
 #include "column_obj.h"
@@ -56,11 +57,40 @@ typedef struct
     float alpha;
 } fs_uniform_params;
 
+typedef struct
+{
+    glm::vec3 scale;
+    glm::vec3 translation;
+    float voxel_resolution;
+    float fill_percentage;
+} model_config;
+
+static std::map<const char*, model_config> model_configs =
+{
+    {"bunny.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.12f, 0.9f}},
+    {"column.obj", {glm::vec3(0.35f), glm::vec3(0.0f, -6.5f, 0.0f), 0.2f, 0.85f}},
+    {"cube.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.15f, 1.0f}},
+    {"sphere.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.15f, 0.8f}},
+    {"suzanne.obj", {glm::vec3(1.2f), glm::vec3(0.0f), 0.15f, 0.8f}},
+    //{"teapot.obj", {glm::vec3(1.0f, glm::vec3(0.0f), 0.25f, 1.0f}},
+};
+
+static const char* obj_models[] = 
+{ 
+    "bunny.obj", 
+    "column.obj", 
+    "cube.obj",
+    "sphere.obj",
+    "suzanne.obj",
+    //"teapot.obj",
+};
+static int obj_model_index = 0;
+
 static void setup_imgui_style()
 {
     ImGuiStyle& style = ImGui::GetStyle();
 
-    style.WindowMinSize     = ImVec2(320, 5000);
+    style.WindowMinSize     = ImVec2(280, 5000);
     style.FramePadding      = ImVec2(6, 6);
     style.ItemSpacing       = ImVec2(6, 6);
     style.ItemInnerSpacing  = ImVec2(6, 6);
@@ -118,12 +148,12 @@ static void init_melt_params()
     melt_params.fillPercentage = 1.0f;
     melt_params.debug.flags |= MeltDebugTypeShowResult;
     melt_params.debug.extentIndex = -1;
+    melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
 }
 
 static bool load_model_mesh(const char* model_name)
 {
     const char* model = nullptr;
-
     if (strcmp(model_name, "bunny.obj") == 0)
         model = s_bunny_obj;
     else if (strcmp(model_name, "column.obj") == 0)
@@ -275,7 +305,7 @@ static void init(void)
     fontCfg.OversampleH = 2;
     fontCfg.OversampleV = 2;
     fontCfg.RasterizerMultiply = 1.5f;
-    io.Fonts->AddFontFromMemoryTTF(dump_font, sizeof(dump_font), 16.0f, &fontCfg);
+    io.Fonts->AddFontFromMemoryTTF(dump_font, sizeof(dump_font), 13.0f, &fontCfg);
 
     setup_imgui_style();
 
@@ -393,6 +423,12 @@ static void init(void)
     pipeline_1_depth = sg_make_pipeline(&pip_desc);
 
     init_melt_params();
+
+    const char* model_name = obj_models[0];
+    load_model_mesh(obj_models[0]);
+    melt_params.fillPercentage = model_configs[model_name].fill_percentage;
+    melt_params.voxelSize = model_configs[model_name].voxel_resolution;
+    generate_occluder();
 }
 
 static void simgui_frame()
@@ -406,24 +442,17 @@ static void simgui_frame()
     static bool box_type_bottom = false;
     static bool box_type_sides = false;
     static bool box_type_regular = true;
-    const char* obj_models[] = 
-    { 
-        "bunny.obj", 
-        "column.obj", 
-        "cube.obj",
-        "sphere.obj",
-        "suzanne.obj",
-        "teapot.obj",
-    };
-    static int obj_model_index = 0;
 
     if (ImGui::Combo("Obj model", &obj_model_index, obj_models, IM_ARRAYSIZE(obj_models)))
     {   
-        load_model_mesh(obj_models[obj_model_index]);
+        const char* model_name = obj_models[obj_model_index];
+        load_model_mesh(model_name);
+        melt_params.fillPercentage = model_configs[model_name].fill_percentage;
+        melt_params.voxelSize = model_configs[model_name].voxel_resolution;
         generate_occluder();
     }
 
-    ImGui::InputFloat("Voxel Size", &melt_params.voxelSize);
+    ImGui::DragFloat("Voxel Size", &melt_params.voxelSize, 0.005f, 0.12f, 0.25f);
     ImGui::DragFloat("Fill Percentage", &melt_params.fillPercentage, 0.01f, 0.0f, 1.0f);
 
     ImGui::Checkbox("BoxTypeDiagonals", &box_type_diagonals);
@@ -440,11 +469,12 @@ static void simgui_frame()
     if (box_type_sides) melt_params.boxTypeFlags |= MeltOccluderBoxTypeSides;
     if (box_type_regular) melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
 
+    ImGui::Checkbox("Depth Test", &depth_test_enabled);
+
     if (ImGui::Button("Generate") && melt_params.boxTypeFlags != MeltOccluderBoxTypeNone)
     {
         generate_occluder();
     }
-    ImGui::Checkbox("Depth Test", &depth_test_enabled);
 
     ImGui::End();
 }
@@ -458,18 +488,22 @@ static void frame(void)
     simgui_frame();
     sg_begin_default_pass(&pass_action, width, height);
 
-    if (bindings_0.vertex_buffers[0].id != SG_INVALID_ID)
+    if (bindings_0.vertex_buffers[0].id != SG_INVALID_ID && 
+        bindings_1.vertex_buffers[0].id != SG_INVALID_ID)
     {
+        const char* model_name = obj_models[obj_model_index];
         glm::mat4 projection = glm::perspective(glm::radians(55.0f), float(width) / height, 0.01f, 100.0f);
         view = glm::lookAt(glm::vec3(0.0, 1.5f, 6.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         static float ry = 0.0f;
         ry += 0.01f;
-        glm::mat4 rym = glm::rotate(glm::mat4(1.0f), ry, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 scale = glm::scale(glm::mat4(1.0f), model_configs[model_name].scale);
+        glm::mat4 translate = glm::translate(glm::mat4(1.0f), model_configs[model_name].translation);
+        glm::mat4 rym = glm::rotate(glm::mat4(1.0f), ry, glm::vec3(0.0f, 1.0f, 0.0f)) * scale * translate;
 
         vs_uniform_params vs_uniforms;
         vs_uniforms.mvp = projection * view * rym;
         fs_uniform_params fs_uniforms;
-        fs_uniforms.alpha = 0.5f;
+        fs_uniforms.alpha = 0.3f;
 
         if (depth_test_enabled)
             sg_apply_pipeline(pipeline_0_depth);
@@ -480,9 +514,7 @@ static void frame(void)
         sg_apply_uniforms(SG_SHADERSTAGE_FS, 0, &fs_uniforms, sizeof(fs_uniform_params));
 
         sg_draw(0, model_vertex_count, 1);
-    }
-    if (bindings_1.vertex_buffers[0].id != SG_INVALID_ID)
-    {
+
         if (depth_test_enabled)
             sg_apply_pipeline(pipeline_1_depth);
         else
@@ -518,7 +550,7 @@ static void input(const sapp_event* event)
 
 sapp_desc sokol_main(int argc, char* argv[]) 
 {
-    sapp_desc desc = { };
+    sapp_desc desc = {};
     desc.init_cb = init;
     desc.frame_cb = frame;
     desc.cleanup_cb = cleanup;
