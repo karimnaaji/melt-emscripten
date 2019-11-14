@@ -16,12 +16,12 @@
 #include <sstream>
 #include <map>
 
-#include "bunny_obj.h"
-#include "column_obj.h"
-#include "cube_obj.h"
-#include "sphere_obj.h"
-#include "teapot_obj.h"
-#include "suzanne_obj.h"
+#include "melt/generated/bunny_obj.h"
+#include "melt/generated/column_obj.h"
+#include "melt/generated/cube_obj.h"
+#include "melt/generated/sphere_obj.h"
+#include "melt/generated/teapot_obj.h"
+#include "melt/generated/suzanne_obj.h"
 
 static bool show_quit_dialog = false;
 
@@ -47,12 +47,12 @@ static uint32_t occluder_vertex_count;
 
 static bool depth_test_enabled = false;
 
-typedef struct 
+typedef struct
 {
     glm::mat4 mvp;
 } vs_uniform_params;
 
-typedef struct 
+typedef struct
 {
     float alpha;
 } fs_uniform_params;
@@ -75,10 +75,10 @@ static std::map<const char*, model_config> model_configs =
     //{"teapot.obj", {glm::vec3(1.0f, glm::vec3(0.0f), 0.25f, 1.0f}},
 };
 
-static const char* obj_models[] = 
-{ 
-    "bunny.obj", 
-    "column.obj", 
+static const char* obj_models[] =
+{
+    "bunny.obj",
+    "column.obj",
     "cube.obj",
     "sphere.obj",
     "suzanne.obj",
@@ -176,27 +176,27 @@ static bool load_model_mesh(const char* model_name)
 
     obj_parsing_res = tinyobj::LoadObj(shapes, materials, error, obj_stream, material_reader);
 
-    if (!error.empty() || !obj_parsing_res) 
+    if (!error.empty() || !obj_parsing_res)
     {
         return false;
     }
 
     uint32_t vertex_count = 0;
-    for (size_t i = 0; i < shapes.size(); i++) 
+    for (size_t i = 0; i < shapes.size(); i++)
         vertex_count += shapes[i].mesh.indices.size();
 
     int output_index = 0;
     std::vector<glm::vec3> mesh_buffer_data(vertex_count * 2);
-    for (size_t i = 0; i < shapes.size(); i++) 
+    for (size_t i = 0; i < shapes.size(); i++)
     {
-        for (size_t f = 0; f < shapes[i].mesh.indices.size(); f++) 
+        for (size_t f = 0; f < shapes[i].mesh.indices.size(); f++)
         {
             auto position = &shapes[i].mesh.positions[shapes[i].mesh.indices[f] * 3];
             mesh_buffer_data[output_index++] = *reinterpret_cast<glm::vec3*>(position);
             mesh_buffer_data[output_index++] = glm::vec3(1.0f, 0.5f, 0.5f);
         }
     }
-    
+
     sg_buffer_desc vbuf_desc;
     memset(&vbuf_desc, 0, sizeof(vbuf_desc));
     vbuf_desc.size = mesh_buffer_data.size() * sizeof(glm::vec3);
@@ -210,7 +210,7 @@ static bool load_model_mesh(const char* model_name)
     }
     position_buffer = sg_make_buffer(&vbuf_desc);
 
-    bindings_0 = 
+    bindings_0 =
     {
         .vertex_buffers[0] = position_buffer,
     };
@@ -218,14 +218,14 @@ static bool load_model_mesh(const char* model_name)
     melt_params.mesh.vertices.clear();
     melt_params.mesh.indices.clear();
 
-    for (size_t i = 0; i < shapes.size(); i++) 
+    for (size_t i = 0; i < shapes.size(); i++)
     {
-        for (size_t f = 0; f < shapes[i].mesh.indices.size(); f++) 
+        for (size_t f = 0; f < shapes[i].mesh.indices.size(); f++)
         {
             melt_params.mesh.indices.push_back(shapes[i].mesh.indices[f]);
         }
 
-        for (size_t v = 0; v < shapes[i].mesh.positions.size() / 3; v++) 
+        for (size_t v = 0; v < shapes[i].mesh.positions.size() / 3; v++)
         {
             melt_params.mesh.vertices.emplace_back();
             melt_params.mesh.vertices.back().x = shapes[i].mesh.positions[3 * v + 0];
@@ -233,7 +233,7 @@ static bool load_model_mesh(const char* model_name)
             melt_params.mesh.vertices.back().z = shapes[i].mesh.positions[3 * v + 2];
         }
     }
-    
+
     model_vertex_count = vertex_count;
 
     return true;
@@ -272,16 +272,16 @@ static void generate_occluder()
     }
     occluder_index_buffer = sg_make_buffer(&ibuf_desc);
 
-    bindings_1 = 
+    bindings_1 =
     {
         .vertex_buffers[0] = occluder_position_buffer,
         .index_buffer = occluder_index_buffer,
     };
-    
+
     occluder_vertex_count = melt_result.debugMesh.indices.size();
 }
 
-static void init(void) 
+static void init(void)
 {
     sg_desc desc = {};
     desc.mtl_device = sapp_metal_get_device();
@@ -331,7 +331,7 @@ static void init(void)
     pass_action.colors[0].val[3] = 1.0f;
 
 #if defined(SOKOL_GLCORE33)
-    const char vertex_source[] = 
+    const char vertex_source[] =
         "#version 330\n"
         "precision highp float;\n"
         "layout(location=0) in vec3 position;\n"
@@ -352,7 +352,7 @@ static void init(void)
         "    color = vec4(f_color, alpha);\n"
         "}\n";
 #elif defined(SOKOL_GLES2) || defined(SOKOL_GLES3)
-    const char vertex_source[] = 
+    const char vertex_source[] =
         "precision highp float;\n"
         "attribute vec3 position;\n"
         "attribute vec3 color;\n"
@@ -386,7 +386,7 @@ static void init(void)
         .vs.source = vertex_source,
     };
     sg_shader program = sg_make_shader(&shader_desc);
-    
+
     sg_pipeline_desc pip_desc = {
         .layout =  {
             .buffers[0].stride = sizeof(glm::vec3) * 2,
@@ -444,7 +444,7 @@ static void simgui_frame()
     static bool box_type_regular = true;
 
     if (ImGui::Combo("Obj model", &obj_model_index, obj_models, IM_ARRAYSIZE(obj_models)))
-    {   
+    {
         const char* model_name = obj_models[obj_model_index];
         load_model_mesh(model_name);
         melt_params.fillPercentage = model_configs[model_name].fill_percentage;
@@ -460,7 +460,7 @@ static void simgui_frame()
     ImGui::Checkbox("BoxTypeBottom", &box_type_bottom);
     ImGui::Checkbox("BoxTypeSides", &box_type_sides);
     ImGui::Checkbox("BoxTypeRegular", &box_type_regular);
-    
+
     melt_params.boxTypeFlags = MeltOccluderBoxTypeNone;
 
     if (box_type_diagonals) melt_params.boxTypeFlags |= MeltOccluderBoxTypeDiagonals;
@@ -479,7 +479,7 @@ static void simgui_frame()
     ImGui::End();
 }
 
-static void frame(void) 
+static void frame(void)
 {
     const int width = sapp_width();
     const int height = sapp_height();
@@ -488,7 +488,7 @@ static void frame(void)
     simgui_frame();
     sg_begin_default_pass(&pass_action, width, height);
 
-    if (bindings_0.vertex_buffers[0].id != SG_INVALID_ID && 
+    if (bindings_0.vertex_buffers[0].id != SG_INVALID_ID &&
         bindings_1.vertex_buffers[0].id != SG_INVALID_ID)
     {
         const char* model_name = obj_models[obj_model_index];
@@ -528,7 +528,7 @@ static void frame(void)
     sg_commit();
 }
 
-static void cleanup(void) 
+static void cleanup(void)
 {
     simgui_shutdown();
     sg_destroy_buffer(position_buffer);
@@ -537,7 +537,7 @@ static void cleanup(void)
     sg_shutdown();
 }
 
-static void input(const sapp_event* event) 
+static void input(const sapp_event* event)
 {
     if (event->type == SAPP_EVENTTYPE_QUIT_REQUESTED)
     {
@@ -548,7 +548,7 @@ static void input(const sapp_event* event)
     simgui_handle_event(event);
 }
 
-sapp_desc sokol_main(int argc, char* argv[]) 
+sapp_desc sokol_main(int argc, char* argv[])
 {
     sapp_desc desc = {};
     desc.init_cb = init;
