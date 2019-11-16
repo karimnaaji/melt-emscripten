@@ -127,7 +127,7 @@ static void setup_imgui_style()
     style.Colors[ImGuiCol_CheckMark]             = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
     style.Colors[ImGuiCol_SliderGrab]            = ImVec4(0.47f, 0.47f, 0.47f, 0.14f);
     style.Colors[ImGuiCol_SliderGrabActive]      = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
-    style.Colors[ImGuiCol_Button]                = ImVec4(0.47f, 0.47f, 0.47f, 0.14f);
+    style.Colors[ImGuiCol_Button]                = ImVec4(0.91f, 0.56f, 0.60f, 1.00f);
     style.Colors[ImGuiCol_Header]                = ImVec4(0.92f, 0.18f, 0.29f, 0.76f);
     style.Colors[ImGuiCol_HeaderHovered]         = ImVec4(0.92f, 0.18f, 0.29f, 0.86f);
     style.Colors[ImGuiCol_HeaderActive]          = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
@@ -454,13 +454,18 @@ static void simgui_frame()
     if (box_type_sides) melt_params.boxTypeFlags |= MeltOccluderBoxTypeSides;
     if (box_type_regular) melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
 
-    ImGui::Checkbox("Depth Test", &depth_test_enabled);
-    ImGui::Checkbox("Pause", &paused);
-
     if (ImGui::Button("Generate") && melt_params.boxTypeFlags != MeltOccluderBoxTypeNone)
     {
         generate_occluder();
     }
+
+    ImGui::Checkbox("Depth Test", &depth_test_enabled);
+    ImGui::Checkbox("Pause", &paused);
+
+    ImGui::Text("Occluder vertex count %d", occluder_vertex_count);
+    ImGui::Text("Model vertex count %d", model_vertex_count);
+    float pct_reduction = 100.0f - (100.0f * (float(occluder_vertex_count) / model_vertex_count));
+    ImGui::Text("Reduction percentage %2.f%%", pct_reduction);
 
     ImGui::End();
 }
@@ -553,6 +558,6 @@ sapp_desc sokol_main(int argc, char* argv[])
     desc.html5_ask_leave_site = false;
     desc.ios_keyboard_resizes_canvas = false;
     desc.gl_force_gles2 = true;
-    desc.window_title = "Dear ImGui HighDPI (sokol-app)";
+    desc.window_title = "Melt";
     return desc;
 }
