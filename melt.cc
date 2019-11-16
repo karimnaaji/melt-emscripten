@@ -5,6 +5,7 @@
 #include "imgui_font.h"
 #define SOKOL_IMGUI_IMPL
 #include "sokol_imgui.h"
+#define MELT_DEBUG
 #define MELT_IMPLEMENTATION
 #include "melt/melt.h"
 #define TINYOBJLOADER_IMPLEMENTATION
@@ -46,6 +47,7 @@ static uint32_t model_vertex_count;
 static uint32_t occluder_vertex_count;
 
 static bool depth_test_enabled = false;
+static bool paused = false;
 
 typedef struct
 {
@@ -210,10 +212,7 @@ static bool load_model_mesh(const char* model_name)
     }
     position_buffer = sg_make_buffer(&vbuf_desc);
 
-    bindings_0 =
-    {
-        .vertex_buffers[0] = position_buffer,
-    };
+    bindings_0.vertex_buffers[0] = position_buffer;
 
     melt_params.mesh.vertices.clear();
     melt_params.mesh.indices.clear();
@@ -272,11 +271,8 @@ static void generate_occluder()
     }
     occluder_index_buffer = sg_make_buffer(&ibuf_desc);
 
-    bindings_1 =
-    {
-        .vertex_buffers[0] = occluder_position_buffer,
-        .index_buffer = occluder_index_buffer,
-    };
+    bindings_1.vertex_buffers[0] = occluder_position_buffer;
+    bindings_1.index_buffer = occluder_index_buffer;
 
     occluder_vertex_count = melt_result.debugMesh.indices.size();
 }
@@ -371,43 +367,32 @@ static void init(void)
         "}\n";
 #endif
 
-    sg_shader_desc shader_desc =  {
-        .attrs[0].name = "position",
-        .attrs[1].name = "color",
-        .fs.uniform_blocks[0] = {
-            .size = sizeof(fs_uniform_params),
-            .uniforms = { [0] = { .name = "alpha", .type = SG_UNIFORMTYPE_FLOAT } }
-        },
-        .fs.source = fragment_source,
-        .vs.uniform_blocks[0] =  {
-            .size = sizeof(vs_uniform_params),
-            .uniforms =  { [0] = { .name = "mvp", .type = SG_UNIFORMTYPE_MAT4 } }
-        },
-        .vs.source = vertex_source,
-    };
+    sg_shader_desc shader_desc;
+    shader_desc.attrs[0].name = "position";
+    shader_desc.attrs[1].name = "color";
+    shader_desc.fs.uniform_blocks[0].size = sizeof(fs_uniform_params);
+    shader_desc.fs.uniform_blocks[0].uniforms[0].name = "alpha";
+    shader_desc.fs.uniform_blocks[0].uniforms[0].type = SG_UNIFORMTYPE_FLOAT;
+    shader_desc.fs.source = fragment_source;
+    shader_desc.vs.uniform_blocks[0].size = sizeof(vs_uniform_params);
+    shader_desc.vs.uniform_blocks[0].uniforms[0].name = "mvp";
+    shader_desc.vs.uniform_blocks[0].uniforms[0].type = SG_UNIFORMTYPE_MAT4;
+    shader_desc.vs.source = vertex_source;
     sg_shader program = sg_make_shader(&shader_desc);
 
-    sg_pipeline_desc pip_desc = {
-        .layout =  {
-            .buffers[0].stride = sizeof(glm::vec3) * 2,
-            .attrs = {
-                [0].offset = 0,
-                [0].format = SG_VERTEXFORMAT_FLOAT3,
-                [1].offset = sizeof(glm::vec3),
-                [1].format = SG_VERTEXFORMAT_FLOAT3,
-            }
-        },
-        .shader = program,
-        .depth_stencil = {
-            .depth_compare_func = SG_COMPAREFUNC_ALWAYS,
-            .depth_write_enabled = false
-        },
-        .blend =  {
-            .enabled = true,
-            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-        },
-    };
+    sg_pipeline_desc pip_desc;
+    pip_desc.layout.buffers[0].stride = sizeof(glm::vec3) * 2;
+    pip_desc.layout.attrs[0].offset = 0;
+    pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[1].offset = sizeof(glm::vec3);
+    pip_desc.layout.attrs[1].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.shader = program;
+    pip_desc.depth_stencil.depth_compare_func = SG_COMPAREFUNC_ALWAYS;
+    pip_desc.depth_stencil.depth_write_enabled = false;
+    pip_desc.blend.enabled = true;
+    pip_desc.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    pip_desc.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+
     pipeline_0 = sg_make_pipeline(&pip_desc);
     pip_desc.depth_stencil.depth_compare_func = SG_COMPAREFUNC_LESS_EQUAL;
     pip_desc.blend.enabled = false;
@@ -470,6 +455,7 @@ static void simgui_frame()
     if (box_type_regular) melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
 
     ImGui::Checkbox("Depth Test", &depth_test_enabled);
+    ImGui::Checkbox("Pause", &paused);
 
     if (ImGui::Button("Generate") && melt_params.boxTypeFlags != MeltOccluderBoxTypeNone)
     {
@@ -494,14 +480,19 @@ static void frame(void)
         const char* model_name = obj_models[obj_model_index];
         glm::mat4 projection = glm::perspective(glm::radians(55.0f), float(width) / height, 0.01f, 100.0f);
         view = glm::lookAt(glm::vec3(0.0, 1.5f, 6.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
         static float ry = 0.0f;
-        ry += 0.01f;
+        if (!paused)
+        {
+            ry += 0.01f;
+        }
+
         glm::mat4 scale = glm::scale(glm::mat4(1.0f), model_configs[model_name].scale);
         glm::mat4 translate = glm::translate(glm::mat4(1.0f), model_configs[model_name].translation);
-        glm::mat4 rym = glm::rotate(glm::mat4(1.0f), ry, glm::vec3(0.0f, 1.0f, 0.0f)) * scale * translate;
+        glm::mat4 transform = glm::rotate(glm::mat4(1.0f), ry, glm::vec3(0.0f, 1.0f, 0.0f)) * scale * translate;
 
         vs_uniform_params vs_uniforms;
-        vs_uniforms.mvp = projection * view * rym;
+        vs_uniforms.mvp = projection * view * transform;
         fs_uniform_params fs_uniforms;
         fs_uniforms.alpha = 0.3f;
 
