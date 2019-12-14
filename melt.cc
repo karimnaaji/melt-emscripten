@@ -6,6 +6,7 @@
 #define SOKOL_IMGUI_IMPL
 #include "sokol_imgui.h"
 #define MELT_DEBUG
+//#define MELT_ASSERT(stmt) assert(stmt)
 #define MELT_IMPLEMENTATION
 #include "melt/melt.h"
 #define TINYOBJLOADER_IMPLEMENTATION
@@ -17,17 +18,15 @@
 #include <sstream>
 #include <map>
 
-#include "melt/generated/bunny_obj.h"
-#include "melt/generated/column_obj.h"
-#include "melt/generated/cube_obj.h"
-#include "melt/generated/sphere_obj.h"
-#include "melt/generated/teapot_obj.h"
-#include "melt/generated/suzanne_obj.h"
+#include "melt/tests/generated/bunny_obj.h"
+#include "melt/tests/generated/column_obj.h"
+#include "melt/tests/generated/cube_obj.h"
+#include "melt/tests/generated/sphere_obj.h"
+#include "melt/tests/generated/teapot_obj.h"
+#include "melt/tests/generated/suzanne_obj.h"
 
-static bool show_quit_dialog = false;
-
-static MeltParams melt_params;
-static MeltResult melt_result;
+static melt_params_t melt_params;
+static melt_result_t melt_result;
 
 static sg_pass_action pass_action;
 static sg_pipeline pipeline_0;
@@ -114,7 +113,7 @@ static void setup_imgui_style()
     style.Colors[ImGuiCol_Border]                = ImVec4(0.31f, 0.31f, 0.31f, 0.00f);
     style.Colors[ImGuiCol_BorderShadow]          = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
     style.Colors[ImGuiCol_FrameBg]               = ImVec4(0.20f, 0.20f, 0.20f, 0.60f);
-    style.Colors[ImGuiCol_FrameBgHovered]        = ImVec4(0.92f, 0.18f, 0.29f, 0.78f);
+    style.Colors[ImGuiCol_FrameBgHovered]        = ImVec4(0.91f, 0.56f, 0.60f, 0.78f);
     style.Colors[ImGuiCol_FrameBgActive]         = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
     style.Colors[ImGuiCol_TitleBg]               = ImVec4(0.20f, 0.22f, 0.27f, 1.00f);
     style.Colors[ImGuiCol_TitleBgCollapsed]      = ImVec4(0.20f, 0.22f, 0.27f, 0.75f);
@@ -122,8 +121,8 @@ static void setup_imgui_style()
     style.Colors[ImGuiCol_MenuBarBg]             = ImVec4(0.20f, 0.22f, 0.27f, 0.47f);
     style.Colors[ImGuiCol_ScrollbarBg]           = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
     style.Colors[ImGuiCol_ScrollbarGrab]         = ImVec4(0.47f, 0.47f, 0.47f, 0.21f);
-    style.Colors[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.92f, 0.18f, 0.29f, 0.78f);
-    style.Colors[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
+    style.Colors[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.91f, 0.56f, 0.60f, 0.78f);
+    style.Colors[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.92f, 0.56f, 0.29f, 1.00f);
     style.Colors[ImGuiCol_CheckMark]             = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
     style.Colors[ImGuiCol_SliderGrab]            = ImVec4(0.47f, 0.47f, 0.47f, 0.14f);
     style.Colors[ImGuiCol_SliderGrabActive]      = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
@@ -132,7 +131,7 @@ static void setup_imgui_style()
     style.Colors[ImGuiCol_HeaderHovered]         = ImVec4(0.92f, 0.18f, 0.29f, 0.86f);
     style.Colors[ImGuiCol_HeaderActive]          = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
     style.Colors[ImGuiCol_ResizeGrip]            = ImVec4(0.47f, 0.77f, 0.83f, 0.04f);
-    style.Colors[ImGuiCol_ResizeGripHovered]     = ImVec4(0.92f, 0.18f, 0.29f, 0.78f);
+    style.Colors[ImGuiCol_ResizeGripHovered]     = ImVec4(0.91f, 0.56f, 0.60f, 0.78f);
     style.Colors[ImGuiCol_ResizeGripActive]      = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
     style.Colors[ImGuiCol_PlotLines]             = ImVec4(0.86f, 0.93f, 0.89f, 0.63f);
     style.Colors[ImGuiCol_PlotLinesHovered]      = ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
@@ -145,12 +144,13 @@ static void setup_imgui_style()
 
 static void init_melt_params()
 {
+    memset(&melt_params, 0, sizeof(melt_params_t));
     melt_params.debug.voxelScale = 0.8f;
-    melt_params.voxelSize = 0.25f;
-    melt_params.fillPercentage = 1.0f;
-    melt_params.debug.flags |= MeltDebugTypeShowResult;
-    melt_params.debug.extentIndex = -1;
-    melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
+    melt_params.voxel_size = 0.25f;
+    melt_params.fill_pct = 1.0f;
+    melt_params.debug.flags |= MELT_DEBUG_TYPE_SHOW_RESULT;
+    melt_params.debug.extent_index = -1;
+    melt_params.box_type_flags = MELT_OCCLUDER_BOX_TYPE_REGULAR;
 }
 
 static bool load_model_mesh(const char* model_name)
@@ -214,22 +214,31 @@ static bool load_model_mesh(const char* model_name)
 
     bindings_0.vertex_buffers[0] = position_buffer;
 
-    melt_params.mesh.vertices.clear();
-    melt_params.mesh.indices.clear();
+    MELT_FREE(melt_params.mesh.vertices);
+    MELT_FREE(melt_params.mesh.indices);
+    melt_params.mesh.vertex_count = 0;
+    melt_params.mesh.index_count = 0;
 
     for (size_t i = 0; i < shapes.size(); i++)
     {
         for (size_t f = 0; f < shapes[i].mesh.indices.size(); f++)
-        {
-            melt_params.mesh.indices.push_back(shapes[i].mesh.indices[f]);
-        }
-
+            ++melt_params.mesh.index_count;
+        for (size_t v = 0; v < shapes[i].mesh.positions.size() / 3; v++)
+            ++melt_params.mesh.vertex_count;
+    }
+    
+    melt_params.mesh.vertices = MELT_MALLOC(melt_vec3_t, melt_params.mesh.vertex_count);
+    melt_params.mesh.indices = MELT_MALLOC(uint16_t, melt_params.mesh.index_count);
+   
+    for (size_t i = 0; i < shapes.size(); i++)
+    {
+        for (size_t f = 0; f < shapes[i].mesh.indices.size(); f++)
+            melt_params.mesh.indices[f] = shapes[i].mesh.indices[f];
         for (size_t v = 0; v < shapes[i].mesh.positions.size() / 3; v++)
         {
-            melt_params.mesh.vertices.emplace_back();
-            melt_params.mesh.vertices.back().x = shapes[i].mesh.positions[3 * v + 0];
-            melt_params.mesh.vertices.back().y = shapes[i].mesh.positions[3 * v + 1];
-            melt_params.mesh.vertices.back().z = shapes[i].mesh.positions[3 * v + 2];
+            melt_params.mesh.vertices[v].x = shapes[i].mesh.positions[3 * v + 0];
+            melt_params.mesh.vertices[v].y = shapes[i].mesh.positions[3 * v + 1];
+            melt_params.mesh.vertices[v].z = shapes[i].mesh.positions[3 * v + 2];
         }
     }
 
@@ -240,18 +249,22 @@ static bool load_model_mesh(const char* model_name)
 
 static void generate_occluder()
 {
-    MeltGenerateOccluder(melt_params, melt_result);
-
-    if (melt_result.debugMesh.vertices.size() == 0)
+    if (!melt_generate_occluder(melt_params, &melt_result))
         return;
+
+    if (melt_result.debug_mesh.vertex_count == 0)
+    {
+        melt_free_result(melt_result);
+        return;
+    }
 
     sg_buffer_desc vbuf_desc;
     memset(&vbuf_desc, 0, sizeof(vbuf_desc));
-    vbuf_desc.size = melt_result.debugMesh.vertices.size() * sizeof(glm::vec3);
+    vbuf_desc.size = melt_result.debug_mesh.vertex_count * sizeof(melt_vec3_t);
     vbuf_desc.type = SG_BUFFERTYPE_VERTEXBUFFER;
     vbuf_desc.usage = SG_USAGE_IMMUTABLE;
     vbuf_desc.label = "occluder_position_buffer";
-    vbuf_desc.content = melt_result.debugMesh.vertices.data();
+    vbuf_desc.content = melt_result.debug_mesh.vertices;
     if (position_buffer.id != SG_INVALID_ID)
     {
         sg_destroy_buffer(occluder_position_buffer);
@@ -260,11 +273,11 @@ static void generate_occluder()
 
     sg_buffer_desc ibuf_desc;
     memset(&ibuf_desc, 0, sizeof(ibuf_desc));
-    ibuf_desc.size = melt_result.debugMesh.indices.size() * sizeof(uint16_t);
+    ibuf_desc.size = melt_result.debug_mesh.index_count * sizeof(uint16_t);
     ibuf_desc.type = SG_BUFFERTYPE_INDEXBUFFER;
     ibuf_desc.usage = SG_USAGE_IMMUTABLE;
     ibuf_desc.label = "occluder_index_buffer";
-    ibuf_desc.content = melt_result.debugMesh.indices.data();
+    ibuf_desc.content = melt_result.debug_mesh.indices;
     if (occluder_index_buffer.id != SG_INVALID_ID)
     {
         sg_destroy_buffer(occluder_index_buffer);
@@ -274,7 +287,9 @@ static void generate_occluder()
     bindings_1.vertex_buffers[0] = occluder_position_buffer;
     bindings_1.index_buffer = occluder_index_buffer;
 
-    occluder_vertex_count = melt_result.debugMesh.indices.size();
+    occluder_vertex_count = melt_result.debug_mesh.index_count;
+
+    melt_free_result(melt_result);
 }
 
 static void init(void)
@@ -368,6 +383,7 @@ static void init(void)
 #endif
 
     sg_shader_desc shader_desc;
+    std::memset(&shader_desc, 0, sizeof(sg_shader_desc));
     shader_desc.attrs[0].name = "position";
     shader_desc.attrs[1].name = "color";
     shader_desc.fs.uniform_blocks[0].size = sizeof(fs_uniform_params);
@@ -381,6 +397,7 @@ static void init(void)
     sg_shader program = sg_make_shader(&shader_desc);
 
     sg_pipeline_desc pip_desc;
+    std::memset(&pip_desc, 0, sizeof(sg_pipeline_desc));
     pip_desc.layout.buffers[0].stride = sizeof(glm::vec3) * 2;
     pip_desc.layout.attrs[0].offset = 0;
     pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
@@ -411,8 +428,8 @@ static void init(void)
 
     const char* model_name = obj_models[0];
     load_model_mesh(obj_models[0]);
-    melt_params.fillPercentage = model_configs[model_name].fill_percentage;
-    melt_params.voxelSize = model_configs[model_name].voxel_resolution;
+    melt_params.fill_pct = model_configs[model_name].fill_percentage;
+    melt_params.voxel_size = model_configs[model_name].voxel_resolution;
     generate_occluder();
 }
 
@@ -432,13 +449,13 @@ static void simgui_frame()
     {
         const char* model_name = obj_models[obj_model_index];
         load_model_mesh(model_name);
-        melt_params.fillPercentage = model_configs[model_name].fill_percentage;
-        melt_params.voxelSize = model_configs[model_name].voxel_resolution;
+        melt_params.fill_pct = model_configs[model_name].fill_percentage;
+        melt_params.voxel_size = model_configs[model_name].voxel_resolution;
         generate_occluder();
     }
 
-    ImGui::DragFloat("Voxel Size", &melt_params.voxelSize, 0.005f, 0.12f, 0.25f);
-    ImGui::DragFloat("Fill Percentage", &melt_params.fillPercentage, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Voxel Size", &melt_params.voxel_size, 0.005f, 0.1f, 0.3f);
+    ImGui::DragFloat("Fill Percentage", &melt_params.fill_pct, 0.01f, 0.0f, 1.0f);
 
     ImGui::Checkbox("BoxTypeDiagonals", &box_type_diagonals);
     ImGui::Checkbox("BoxTypeTop", &box_type_top);
@@ -446,15 +463,15 @@ static void simgui_frame()
     ImGui::Checkbox("BoxTypeSides", &box_type_sides);
     ImGui::Checkbox("BoxTypeRegular", &box_type_regular);
 
-    melt_params.boxTypeFlags = MeltOccluderBoxTypeNone;
+    melt_params.box_type_flags = MELT_OCCLUDER_BOX_TYPE_NONE;
 
-    if (box_type_diagonals) melt_params.boxTypeFlags |= MeltOccluderBoxTypeDiagonals;
-    if (box_type_top) melt_params.boxTypeFlags |= MeltOccluderBoxTypeTop;
-    if (box_type_bottom) melt_params.boxTypeFlags |= MeltOccluderBoxTypeBottom;
-    if (box_type_sides) melt_params.boxTypeFlags |= MeltOccluderBoxTypeSides;
-    if (box_type_regular) melt_params.boxTypeFlags = MeltOccluderBoxTypeRegular;
+    if (box_type_diagonals) melt_params.box_type_flags |= MELT_OCCLUDER_BOX_TYPE_DIAGONALS;
+    if (box_type_top) melt_params.box_type_flags |= MELT_OCCLUDER_BOX_TYPE_TOP;
+    if (box_type_bottom) melt_params.box_type_flags |= MELT_OCCLUDER_BOX_TYPE_BOTTOM;
+    if (box_type_sides) melt_params.box_type_flags |= MELT_OCCLUDER_BOX_TYPE_SIDES;
+    if (box_type_regular) melt_params.box_type_flags = MELT_OCCLUDER_BOX_TYPE_REGULAR;
 
-    if (ImGui::Button("Generate") && melt_params.boxTypeFlags != MeltOccluderBoxTypeNone)
+    if (ImGui::Button("Generate") && melt_params.box_type_flags != MELT_OCCLUDER_BOX_TYPE_NONE)
     {
         generate_occluder();
     }
@@ -526,6 +543,8 @@ static void frame(void)
 
 static void cleanup(void)
 {
+    MELT_FREE(melt_params.mesh.vertices);
+    MELT_FREE(melt_params.mesh.indices);
     simgui_shutdown();
     sg_destroy_buffer(position_buffer);
     sg_destroy_buffer(occluder_position_buffer);
@@ -535,12 +554,6 @@ static void cleanup(void)
 
 static void input(const sapp_event* event)
 {
-    if (event->type == SAPP_EVENTTYPE_QUIT_REQUESTED)
-    {
-        show_quit_dialog = true;
-        sapp_cancel_quit();
-    }
-
     simgui_handle_event(event);
 }
 
@@ -553,7 +566,7 @@ sapp_desc sokol_main(int argc, char* argv[])
     desc.event_cb = input;
     desc.width = 1024;
     desc.height = 768;
-    desc.fullscreen = true;
+    desc.fullscreen = false;
     desc.high_dpi = true;
     desc.html5_ask_leave_site = false;
     desc.ios_keyboard_resizes_canvas = false;
