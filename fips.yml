@@ -5,7 +5,9 @@
 imports:
     sokol:
         git: https://github.com/floooh/sokol
+        rev: b5e43ec43eb3d0a8a73eadd5db979291be3e039d
     fips-imgui:
         git: https://github.com/fips-libs/fips-imgui.git
+        rev: 8a849e517a9ee2b53a5ed3bf9ae3b59432d50cdf
     fips-glm:
         git: https://github.com/floooh/fips-glm.git
